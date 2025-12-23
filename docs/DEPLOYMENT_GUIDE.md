@@ -161,6 +161,8 @@ This updates package lists and installs security patches.
 
 Install Docker using the official convenience script:
 
+> **Pro Tip:** If you're copying from this documentation, ensure no leading spaces are accidentally included. The backslash (`\`) at the end of a line means the command continues on the next line - copy the entire multi-line command as one block.
+
 ```bash
 # Install prerequisites
 apt install -y ca-certificates curl gnupg lsb-release

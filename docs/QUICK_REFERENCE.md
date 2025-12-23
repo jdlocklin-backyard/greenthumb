@@ -62,7 +62,7 @@
 |---------|-------------|
 | `make db-shell` | Access PostgreSQL shell |
 | `docker exec greenthumb-postgres pg_dump -U greenthumb greenthumb > backup.sql` | Backup database |
-| `cat backup.sql \| docker exec -i greenthumb-postgres psql -U greenthumb greenthumb` | Restore database |
+| `cat backup.sql | docker exec -i greenthumb-postgres psql -U greenthumb greenthumb` | Restore database |
 | `docker exec greenthumb-postgres pg_isready -U greenthumb` | Check database health |
 
 **Inside psql shell:**
@@ -196,6 +196,8 @@ make restart
 ---
 
 ## API Authentication
+
+> **Copy/Paste Tip:** When copying multi-line commands, ensure no leading spaces are accidentally included. The backslash (`\`) at the end of a line continues the command.
 
 ### Register New User (curl)
 

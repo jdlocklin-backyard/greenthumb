@@ -105,12 +105,15 @@ services:
     image: redis:7-alpine
     container_name: greenthumb-redis
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
     volumes:
       # Persistent Redis data
       - ./data/redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      # Fixed: Use proper ping command with authentication
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -160,9 +163,9 @@ services:
       - "traefik.http.routers.backend.entrypoints=web"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
       
-      # CORS middleware
+      # CORS middleware (use http:// for local development, https:// when SSL enabled)
       - "traefik.http.middlewares.backend-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,PATCH,OPTIONS"
-      - "traefik.http.middlewares.backend-cors.headers.accesscontrolalloworiginlist=https://${TRAEFIK_DOMAIN:-green.lab}"
+      - "traefik.http.middlewares.backend-cors.headers.accesscontrolalloworiginlist=http://${TRAEFIK_DOMAIN:-green.lab}"
       - "traefik.http.middlewares.backend-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.backend-cors.headers.addvaryheader=true"
       

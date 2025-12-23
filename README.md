@@ -248,6 +248,8 @@ All endpoints require JWT authentication (except `/auth/register` and `/auth/log
 
 ### Authentication Flow
 
+> **Copy/Paste Tip:** When copying multi-line commands, remove any leading spaces that may be accidentally included from indented code blocks. The backslash (`\`) continues the command on the next line.
+
 ```bash
 # 1. Register
 curl -X POST http://api.green.lab/api/v1/auth/register \
