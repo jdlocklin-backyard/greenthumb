@@ -1,0 +1,22 @@
+# Agent Service Dependencies
+# Autonomous worker for scheduled tasks and data collection
+
+# Scheduler
+APScheduler==3.10.4
+
+# Redis for task locking
+redis==5.0.1
+hiredis==2.3.2
+
+# HTTP client for external APIs
+httpx==0.25.2
+
+# Database connectivity
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.25
+
+# Configuration
+python-dotenv==1.0.0
+
+# Logging
+python-json-logger==2.0.7
