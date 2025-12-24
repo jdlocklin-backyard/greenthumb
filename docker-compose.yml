@@ -18,7 +18,7 @@ services:
   # Dashboard available at traefik.green.lab
   # ---------------------------------------------------------------------------
   traefik:
-    image: traefik:v3.0
+    image: traefik:v2.10
     container_name: greenthumb-traefik
     restart: unless-stopped
     command:
