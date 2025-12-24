@@ -1,4 +1,4 @@
-# GreenThumb 🌱
+# GreenThumb
 
 Production-ready, self-hosted gardening platform for Proxmox Home Lab.
 
@@ -15,37 +15,73 @@ Track your gardens, monitor plant growth, and get automated weather updates - al
 - **Self-Hosted** - Complete control over your data
 - **Docker-Based** - Easy deployment with Docker Compose
 - **Production-Ready** - Structured logging, health checks, and fault isolation
+- **No DNS Required** - Works with direct IP access out of the box
 
 ---
 
 ## Architecture
+
+```
+  Browser --> http://<your-ip>:3000
+                    |
+                    v
+            +---------------+
+            |   Frontend    |  Next.js (proxies /api/* internally)
+            +-------+-------+
+                    |
+                    v
+            +---------------+     +------------+
+            |   Backend     |<--->| PostgreSQL |
+            |   (FastAPI)   |     | + PostGIS  |
+            +-------+-------+     +------------+
+                    |
+                    v
+            +---------------+     +------------+
+            |    Agent      |<--->|   Redis    |
+            +---------------+     +------------+
+```
 
 - **Frontend**: Next.js 14+ with TypeScript and Tailwind CSS
 - **Backend API**: Python FastAPI with async SQLAlchemy
 - **Agent**: Autonomous worker with APScheduler for weather checks
 - **Database**: PostgreSQL 16 with PostGIS for geospatial queries
 - **Cache/Queue**: Redis for agent task locking
-- **Reverse Proxy**: Traefik v3 with automatic service discovery
 
-**See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed system design**
+**No reverse proxy needed** - Next.js handles API routing internally.
 
 ---
 
 ## Quick Start
 
-Get GreenThumb running in under 5 minutes:
+### Option 1: One-Line Install (Proxmox LXC)
+
+Inside a fresh Ubuntu 22.04 LXC container:
 
 ```bash
-make setup && make up
+curl -fsSL https://raw.githubusercontent.com/your-org/greenthumb/main/scripts/setup-lxc.sh | bash
 ```
 
-That's it! The platform will be available at:
+### Option 2: Manual Setup
 
-- **Frontend**: http://green.lab
-- **API Docs**: http://api.green.lab/docs
-- **Traefik Dashboard**: http://traefik.green.lab (admin/admin)
+```bash
+# Clone the repository
+git clone https://github.com/your-org/greenthumb.git
+cd greenthumb
 
-**For complete deployment instructions, see [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)**
+# Create environment file
+cp .env.example .env
+
+# Start all services
+docker compose up -d --build
+```
+
+**Access the platform at:** `http://<your-ip>:3000`
+
+| URL | Purpose |
+|-----|---------|
+| `http://<your-ip>:3000` | Main application |
+| `http://<your-ip>:3000/api/docs` | API documentation (Swagger UI) |
+| `http://<your-ip>:3000/api/health` | Health check endpoint |
 
 ---
 
@@ -53,107 +89,73 @@ That's it! The platform will be available at:
 
 | Document | Description |
 |----------|-------------|
-| **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** | Complete step-by-step deployment on Proxmox Ubuntu container |
-| **[Quick Reference](docs/QUICK_REFERENCE.md)** | One-page cheat sheet for commands and troubleshooting |
-| **[Architecture](docs/ARCHITECTURE.md)** | System design, technology choices, and data flow |
-| **[GitHub Setup](docs/GITHUB_SETUP.md)** | Contributing guidelines and version control workflow |
+| **[Proxmox LXC Deployment](docs/DEPLOY_PROXMOX_LXC.md)** | Step-by-step Proxmox container setup |
+| **[Quick Reference](docs/QUICK_REFERENCE.md)** | One-page cheat sheet for commands |
+| **[Architecture](docs/ARCHITECTURE.md)** | System design and technology choices |
 
 ---
 
 ## Prerequisites
 
-Before starting, ensure you have:
-
 - **Docker** 24.0+ and **Docker Compose** 2.20+
-- **Make** (for convenient commands)
-- **At least 4GB RAM** and **10GB disk space**
-- **DNS setup** pointing `*.green.lab` to your server IP (or edit `/etc/hosts`)
+- **2GB RAM minimum** (4GB recommended)
+- **10GB disk space**
 
-### DNS Configuration
-
-Add to your `/etc/hosts` (Linux/Mac) or `C:\Windows\System32\drivers\etc\hosts` (Windows):
-
-```
-192.168.1.100  green.lab
-192.168.1.100  api.green.lab
-192.168.1.100  traefik.green.lab
-```
-
-Replace `192.168.1.100` with your Proxmox host IP.
+That's it. No DNS configuration, no reverse proxy setup, no hosts file editing.
 
 ---
 
-## Environment Variables Reference
+## Environment Variables
 
-All configuration is done via `.env` file (copied from `.env.example` during setup).
+Configuration via `.env` file (copied from `.env.example`).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| **Database** |||
 | `POSTGRES_USER` | `greenthumb` | PostgreSQL username |
-| `POSTGRES_PASSWORD` | `secure_password_here` | PostgreSQL password (⚠️ CHANGE THIS) |
+| `POSTGRES_PASSWORD` | `greenthumb_dev` | Database password |
 | `POSTGRES_DB` | `greenthumb` | Database name |
-| `POSTGRES_HOST` | `postgres` | Database hostname (Docker service name) |
-| `POSTGRES_PORT` | `5432` | PostgreSQL port |
-| `DATABASE_URL` | Auto-generated | Full PostgreSQL connection string |
-| **Redis** |||
-| `REDIS_HOST` | `redis` | Redis hostname (Docker service name) |
-| `REDIS_PORT` | `6379` | Redis port |
-| `REDIS_PASSWORD` | `redis_secure_pass` | Redis password (⚠️ CHANGE THIS) |
-| `REDIS_URL` | Auto-generated | Full Redis connection string |
-| **Backend API** |||
-| `SECRET_KEY` | Random | JWT signing key (⚠️ CHANGE THIS) |
-| `ALGORITHM` | `HS256` | JWT algorithm |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | Token expiry (24 hours) |
-| `ALLOWED_ORIGINS` | `http://green.lab` | CORS allowed origins |
-| **Frontend** |||
-| `NEXT_PUBLIC_API_URL` | `http://api.green.lab` | Backend API URL for browser |
-| **Agent** |||
-| `AGENT_CHECK_INTERVAL` | `15` | Weather check interval (minutes) |
-| `WEATHER_API_PROVIDER` | `open-meteo` | Weather data source |
-| **Traefik** |||
-| `DOMAIN_FRONTEND` | `green.lab` | Frontend domain |
-| `DOMAIN_API` | `api.green.lab` | API domain |
-| `DOMAIN_TRAEFIK` | `traefik.green.lab` | Traefik dashboard domain |
-| `ENABLE_HTTPS` | `false` | Enable Let's Encrypt HTTPS |
-| `ACME_EMAIL` | `admin@example.com` | Email for Let's Encrypt |
+| `SECRET_KEY` | (generate one) | JWT signing key |
+| `AGENT_LOG_LEVEL` | `INFO` | Agent logging verbosity |
+| `WEATHER_API_PROVIDER` | `open-meteo` | Weather data source (free) |
+
+**For production:** Generate a real secret key with `openssl rand -hex 32`
+
+---
 
 ## Common Commands
 
-All commands use Make for convenience:
-
 ```bash
-# Setup and start
-make setup          # Copy .env.example, create directories
-make up             # Start all services
-make logs           # View all logs
-make down           # Stop all services
+# Start all services
+docker compose up -d
 
-# Service-specific
-make logs-backend   # Backend API logs only
-make logs-agent     # Agent worker logs only
-make logs-frontend  # Frontend logs only
+# View logs (all services)
+docker compose logs -f
 
-# Development
-make backend-shell  # Open shell in backend container
-make agent-shell    # Open shell in agent container
-make db-shell       # Open psql in database
+# View specific service logs
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f agent
 
-# Database
-make migrate        # Run Alembic migrations
-make migrate-create # Create new migration
+# Restart services
+docker compose restart
 
-# Maintenance
-make restart        # Restart all services
-make rebuild        # Rebuild all containers from scratch
-make clean          # Stop and remove all containers/volumes
+# Stop all services
+docker compose down
 
-# Testing and Quality
-make test-backend   # Run backend tests
-make format-backend # Format Python code with Black
-make lint-backend   # Lint Python code
-make type-check     # MyPy type checking
+# Rebuild after code changes
+docker compose up -d --build
+
+# Database shell
+docker exec -it greenthumb-postgres psql -U greenthumb greenthumb
+
+# Backup database
+docker exec greenthumb-postgres pg_dump -U greenthumb greenthumb > backup.sql
+
+# Restore database
+cat backup.sql | docker exec -i greenthumb-postgres psql -U greenthumb greenthumb
 ```
+
+---
 
 ## Project Structure
 
@@ -161,259 +163,139 @@ make type-check     # MyPy type checking
 .
 ├── backend/                 # FastAPI application
 │   ├── app/
-│   │   ├── api/            # API routes
-│   │   │   ├── v1/
-│   │   │   │   ├── endpoints/
-│   │   │   │   │   ├── auth.py      # Authentication
-│   │   │   │   │   ├── gardens.py   # Garden CRUD
-│   │   │   │   │   ├── plants.py    # Plant CRUD
-│   │   │   │   │   └── weather.py   # Weather data
-│   │   │   │   └── router.py        # Route aggregation
-│   │   │   └── deps.py               # Dependencies (auth)
-│   │   ├── core/           # Core configuration
-│   │   │   ├── config.py             # Settings
-│   │   │   ├── database.py           # SQLAlchemy setup
-│   │   │   └── logging_config.py     # JSON logging
+│   │   ├── api/v1/         # API routes (gardens, plants, weather)
+│   │   ├── core/           # Config, database, logging
 │   │   ├── models/         # SQLAlchemy models
-│   │   │   ├── user.py
-│   │   │   ├── garden.py
-│   │   │   ├── plant.py
-│   │   │   └── weather.py
 │   │   └── schemas.py      # Pydantic schemas
-│   ├── main.py             # FastAPI app entry point
-│   ├── requirements.txt    # Python dependencies
-│   ├── Dockerfile
-│   └── init-db.sql         # Database initialization
+│   ├── main.py             # FastAPI entry point
+│   └── Dockerfile
 │
-├── agent/                  # Autonomous worker
-│   ├── worker.py           # Scheduler and jobs
-│   ├── requirements.txt
+├── agent/                  # Background worker
+│   ├── worker.py           # APScheduler jobs
 │   └── Dockerfile
 │
 ├── frontend/               # Next.js application
-│   ├── app/
-│   │   ├── page.tsx        # Dashboard
-│   │   ├── layout.tsx      # Root layout
-│   │   └── globals.css     # Tailwind styles
-│   ├── lib/
-│   │   └── api.ts          # Typed API client
-│   ├── package.json
-│   ├── tsconfig.json       # TypeScript config (strict mode)
-│   ├── tailwind.config.ts
-│   ├── next.config.js
+│   ├── app/                # App router pages
+│   ├── next.config.js      # API rewrite configuration
 │   └── Dockerfile
 │
+├── scripts/
+│   └── setup-lxc.sh        # One-line installer
+│
 ├── docs/
-│   └── ARCHITECTURE.md     # System architecture docs
+│   └── DEPLOY_PROXMOX_LXC.md
 │
 ├── docker-compose.yml      # Service orchestration
-├── .env.example            # Environment template
-├── .gitignore
-├── Makefile                # Convenience commands
-└── README.md               # This file
+└── .env.example            # Environment template
 ```
+
+---
 
 ## First Steps After Installation
 
-1. **Create an account**:
-   - Visit http://green.lab
-   - Click "Sign In" → "Register"
-   - Enter email and password
+1. **Open the app**: Navigate to `http://<your-ip>:3000`
 
-2. **Create your first garden**:
-   - Click "Create Your First Garden"
-   - Enter garden name and description
-   - Add GPS coordinates (latitude/longitude)
-   - Submit
+2. **Create an account**: Click "Sign In" then "Register"
 
-3. **Add plants**:
+3. **Create your first garden**:
+   - Enter garden name and GPS coordinates
+   - Weather data collection starts automatically
+
+4. **Add plants**:
    - Open your garden
-   - Click "Add Plant"
-   - Enter plant details (name, variety, planting date)
-   - Save
+   - Add plants with variety and planting date
 
-4. **Check weather**:
-   - Weather data is automatically collected every 15 minutes
-   - View weather history in your garden dashboard
-   - Agent logs available: `make logs-agent`
+5. **Monitor weather**:
+   - Weather updates every 15 minutes
+   - View history in garden dashboard
+
+---
 
 ## API Documentation
 
-Interactive API docs are auto-generated by FastAPI:
+Interactive docs at `http://<your-ip>:3000/api/docs`
 
-- **Swagger UI**: http://api.green.lab/docs
-- **ReDoc**: http://api.green.lab/redoc
-
-All endpoints require JWT authentication (except `/auth/register` and `/auth/login`).
-
-### Authentication Flow
-
-> **Copy/Paste Tip:** When copying multi-line commands, remove any leading spaces that may be accidentally included from indented code blocks. The backslash (`\`) continues the command on the next line.
+### Quick API Test
 
 ```bash
-# 1. Register
-curl -X POST http://api.green.lab/api/v1/auth/register \
+# Health check
+curl http://localhost:3000/api/health
+
+# Register user
+curl -X POST http://localhost:3000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"secure123","full_name":"Test User"}'
 
-# 2. Login
-curl -X POST http://api.green.lab/api/v1/auth/login \
+# Login
+curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "username=user@example.com&password=secure123"
-
-# Response: {"access_token":"eyJ...","token_type":"bearer"}
-
-# 3. Use token
-curl -X GET http://api.green.lab/api/v1/gardens \
-  -H "Authorization: Bearer eyJ..."
 ```
 
-## Monitoring and Logs
-
-### Structured JSON Logs
-
-All services output structured JSON logs:
-
-```bash
-# View real-time logs
-make logs
-
-# Filter specific service
-make logs-backend | jq 'select(.level=="ERROR")'
-
-# Find slow queries
-make logs-backend | jq 'select(.duration > 1000)'
-
-# Agent weather check logs
-make logs-agent | jq 'select(.message | contains("weather"))'
-```
-
-### Health Checks
-
-Each service has a health endpoint:
-
-- **Backend**: http://api.green.lab/health
-- **Database**: `docker exec greenthumb-postgres pg_isready`
-- **Redis**: `docker exec greenthumb-redis redis-cli ping`
-
-### Traefik Dashboard
-
-Monitor all services at http://traefik.green.lab:
-
-- HTTP routers and services
-- TLS certificates (if HTTPS enabled)
-- Request metrics
-
-## Production Deployment
-
-### Enable HTTPS
-
-1. Get a domain (e.g., `gardening.yourdomain.com`)
-2. Point DNS to your Proxmox host
-3. Update `.env`:
-   ```
-   ENABLE_HTTPS=true
-   DOMAIN_FRONTEND=gardening.yourdomain.com
-   DOMAIN_API=api.gardening.yourdomain.com
-   ACME_EMAIL=your@email.com
-   ```
-4. Restart: `make restart`
-
-Traefik will automatically obtain Let's Encrypt certificates.
-
-### Security Hardening
-
-1. **Change default passwords** in `.env`:
-   - `POSTGRES_PASSWORD`
-   - `REDIS_PASSWORD`
-   - `SECRET_KEY` (generate with `openssl rand -hex 32`)
-
-2. **Firewall rules**:
-   ```bash
-   # Allow only HTTP/HTTPS
-   ufw allow 80/tcp
-   ufw allow 443/tcp
-   ufw deny 8080/tcp  # Block Traefik dashboard externally
-   ```
-
-3. **Backups**:
-   ```bash
-   # Database backup
-   docker exec greenthumb-postgres pg_dump -U greenthumb greenthumb > backup.sql
-   
-   # Restore
-   docker exec -i greenthumb-postgres psql -U greenthumb greenthumb < backup.sql
-   ```
+---
 
 ## Troubleshooting
 
-### Services won't start
+### Containers won't start
 
 ```bash
-# Check logs
-make logs
+# Check container status
+docker compose ps
 
-# Verify ports aren't in use
-netstat -tulpn | grep -E ':(80|443|5432|6379|8000|3000)'
+# View detailed logs
+docker compose logs
 
-# Rebuild from scratch
-make clean
-make rebuild
-make up
+# Ensure LXC features enabled (if in Proxmox LXC)
+# On Proxmox host:
+pct set <CTID> --features keyctl=1,nesting=1
+```
+
+### Frontend can't reach backend
+
+This usually means the backend isn't healthy yet. Wait 30-60 seconds after startup.
+
+```bash
+# Check backend health
+docker compose logs backend | tail -20
+
+# Verify health endpoint works
+curl http://localhost:3000/api/health
 ```
 
 ### Database connection errors
 
 ```bash
-# Check database is running
-docker ps | grep postgres
+# Check PostgreSQL is running
+docker compose ps postgres
 
-# Test connection
-docker exec -it greenthumb-postgres psql -U greenthumb -d greenthumb
-
-# Verify DATABASE_URL in .env
+# Test direct connection
+docker exec -it greenthumb-postgres psql -U greenthumb greenthumb -c "SELECT 1"
 ```
 
-### Agent not collecting weather
+---
 
-```bash
-# Check agent logs
-make logs-agent
+## Production Recommendations
 
-# Verify Redis connection
-docker exec -it greenthumb-redis redis-cli -a $(grep REDIS_PASSWORD .env | cut -d '=' -f2) ping
+1. **Change default passwords** in `.env`:
+   ```bash
+   openssl rand -base64 24  # Generate password
+   openssl rand -hex 32     # Generate SECRET_KEY
+   ```
 
-# Manually trigger weather check (requires Python in container)
-docker exec -it greenthumb-agent python -c "from worker import weather_check_job; weather_check_job()"
-```
+2. **Enable firewall**:
+   ```bash
+   ufw allow 22/tcp    # SSH
+   ufw allow 3000/tcp  # GreenThumb
+   ufw enable
+   ```
 
-### Frontend can't reach API
+3. **Regular backups**:
+   ```bash
+   # Add to crontab
+   0 2 * * * docker exec greenthumb-postgres pg_dump -U greenthumb greenthumb > /backup/greenthumb_$(date +\%Y\%m\%d).sql
+   ```
 
-```bash
-# Check NEXT_PUBLIC_API_URL in .env matches api domain
-# Verify Traefik routing
-curl -H "Host: api.green.lab" http://localhost/health
-
-# Check CORS settings in backend/app/core/config.py
-```
-
-## Contributing
-
-Contributions are welcome! Please see our [GitHub Setup Guide](docs/GITHUB_SETUP.md) for:
-
-- How to fork and customize
-- Contributing guidelines
-- Code style standards
-- Pull request process
-- Version control workflow
-
-**Quick Contributing Steps:**
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Make changes with tests
-4. Follow code style: `make format-backend` and `make lint-frontend`
-5. Submit a pull request
+4. **Optional: Add HTTPS** with Cloudflare Tunnel or Caddy reverse proxy for external access.
 
 ---
 
@@ -423,39 +305,15 @@ MIT License - See LICENSE file for details.
 
 ---
 
-## Support and Resources
-
-**Getting Help:**
-- Check the [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for setup issues
-- Review the [Quick Reference](docs/QUICK_REFERENCE.md) for common commands
-- Search [existing issues](https://github.com/yourusername/greenthumb/issues)
-- Open a [new issue](https://github.com/yourusername/greenthumb/issues/new) with logs and details
-
-**Useful Links:**
-- [Architecture Documentation](docs/ARCHITECTURE.md) - Understand system design
-- [API Documentation](http://api.green.lab/docs) - Interactive API docs (when running)
-- [Traefik Dashboard](http://traefik.green.lab) - Monitor services (when running)
-
----
-
 ## Roadmap
 
-Future enhancements planned:
-
-- [ ] Plant photo uploads with image storage
-- [ ] Frost and heat alerts via email/push notifications
+- [ ] Plant photo uploads
+- [ ] Frost and heat alerts
 - [ ] Companion planting recommendations
-- [ ] Harvest tracking and yield analytics
-- [ ] Mobile app (React Native)
-- [ ] Integration with smart sensors (soil moisture, etc.)
-- [ ] Multi-user support with shared gardens
-- [ ] Export data to CSV/JSON
-
-**Want to contribute?** Pick an item and open a PR!
+- [ ] Harvest tracking
+- [ ] Mobile app
+- [ ] Smart sensor integration
 
 ---
 
-**Built with ❤️ for home lab enthusiasts**
-
-*If you find GreenThumb useful, please consider starring the repository!*
-
+**Built for home lab enthusiasts who want their gardening data under their own control.**

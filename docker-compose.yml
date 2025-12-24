@@ -1,85 +1,64 @@
 # =============================================================================
-# GreenThumb Platform - Docker Compose Configuration
+# GreenThumb Platform - Simplified Docker Compose
 # =============================================================================
-# This configuration orchestrates a complete self-hosted gardening platform:
-# - Traefik: Reverse proxy with automatic service discovery
-# - PostgreSQL: Primary database with PostGIS extension
-# - Redis: Cache and message broker for the agent
-# - Backend: FastAPI application serving REST API
-# - Agent: Autonomous worker for weather checks and data updates
-# - Frontend: Next.js application with SSR support
+# Optimized for home lab deployment on Proxmox LXC
+#
+# Architecture:
+#   - Frontend (Next.js): Port 3000 - SINGLE ENTRY POINT
+#   - Backend (FastAPI): Internal (optional: 8000 for API dev)
+#   - PostgreSQL: Internal only
+#   - Redis: Internal only
+#   - Agent: Background worker
+#
+# Access: http://<your-ip>:3000
+# API Docs: http://<your-ip>:3000/api/docs
 # =============================================================================
 
 services:
   # ---------------------------------------------------------------------------
-  # Traefik - DISABLED due to Docker API compatibility issues
-  # Uncomment when Docker/Traefik versions are compatible
-  # ---------------------------------------------------------------------------
-  # traefik:
-  #   image: traefik:v2.10
-  #   container_name: greenthumb-traefik
-  #   ...
-
-  # ---------------------------------------------------------------------------
-  # PostgreSQL - Primary Database with PostGIS
-  # ---------------------------------------------------------------------------
-  # Stores all application data (plants, gardens, users, locations)
-  # PostGIS extension enabled for geospatial queries
+  # PostgreSQL + PostGIS
   # ---------------------------------------------------------------------------
   postgres:
     image: postgis/postgis:16-3.4
     container_name: greenthumb-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      # Performance tuning for home lab (adjust based on RAM)
-      POSTGRES_SHARED_BUFFERS: 256MB
-      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_USER: ${POSTGRES_USER:-greenthumb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-greenthumb_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-greenthumb}
     volumes:
-      # Persistent database storage
-      - ./data/db:/var/lib/postgresql/data
-      # Initialization scripts (run on first start)
+      - postgres_data:/var/lib/postgresql/data
       - ./backend/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-greenthumb}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - greenthumb
-    # Not exposed externally - only accessible within Docker network
+      - greenthumb-internal
 
   # ---------------------------------------------------------------------------
-  # Redis - Cache & Message Broker
-  # ---------------------------------------------------------------------------
-  # Used by agent for task locking and caching weather data
+  # Redis - Cache & Task Queue
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: greenthumb-redis
     restart: unless-stopped
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    command: redis-server --appendonly yes
     volumes:
-      # Persistent Redis data
-      - ./data/redis:/data
+      - redis_data:/data
     healthcheck:
-      # Fixed: Use proper ping command with authentication
-      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - greenthumb
+      - greenthumb-internal
 
   # ---------------------------------------------------------------------------
-  # Backend API - FastAPI Application
+  # Backend API - FastAPI
   # ---------------------------------------------------------------------------
-  # REST API for all application operations
-  # Swagger UI available at /docs
+  # Internal by default. Uncomment ports to expose for direct API access.
   # ---------------------------------------------------------------------------
   backend:
     build:
@@ -87,19 +66,25 @@ services:
       dockerfile: Dockerfile
     container_name: greenthumb-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
+    # Uncomment to expose API directly (useful for development/debugging)
+    # ports:
+    #   - "8000:8000"
     environment:
-      # Override for container networking
       POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-greenthumb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-greenthumb_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-greenthumb}
+      POSTGRES_PORT: 5432
       REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # CORS: Allow frontend container and localhost for development
+      CORS_ORIGINS: '["http://localhost:3000", "http://frontend:3000"]'
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
     volumes:
-      # Mount source code for development (comment out for production)
+      # Development: mount source for hot reload
       - ./backend:/app
-      # Logs volume
-      - ./logs/backend:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,33 +96,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    labels:
-      # Enable Traefik routing
-      - "traefik.enable=true"
-
-      # API routing via path (http://<IP>/api)
-      - "traefik.http.routers.backend.rule=PathPrefix(`/api`)"
-      - "traefik.http.routers.backend.entrypoints=web"
-      - "traefik.http.routers.backend.priority=90"
-      - "traefik.http.services.backend.loadbalancer.server.port=8000"
-
-      # CORS middleware (allow all origins for local dev)
-      - "traefik.http.middlewares.backend-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,PATCH,OPTIONS"
-      - "traefik.http.middlewares.backend-cors.headers.accesscontrolalloworiginlist=*"
-      - "traefik.http.middlewares.backend-cors.headers.accesscontrolmaxage=100"
-      - "traefik.http.middlewares.backend-cors.headers.addvaryheader=true"
-
-      - "traefik.http.routers.backend.middlewares=backend-cors"
     networks:
-      - greenthumb
+      - greenthumb-internal
 
   # ---------------------------------------------------------------------------
-  # Agent - Autonomous Worker
-  # ---------------------------------------------------------------------------
-  # Scheduled tasks:
-  # - Weather data collection (Open-Meteo API)
-  # - Seed database updates (OpenFoodFacts API)
-  # - Plant care reminders
+  # Agent - Background Worker
   # ---------------------------------------------------------------------------
   agent:
     build:
@@ -145,81 +108,57 @@ services:
       dockerfile: Dockerfile
     container_name: greenthumb-agent
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-greenthumb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-greenthumb_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-greenthumb}
       REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:-INFO}
     volumes:
-      # Mount source code for development
       - ./agent:/app
-      # Logs volume (JSON format for easy parsing)
-      - ./logs/agent:/app/logs
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       backend:
         condition: service_healthy
     networks:
-      - greenthumb
+      - greenthumb-internal
 
   # ---------------------------------------------------------------------------
-  # Frontend - Next.js Application
+  # Frontend - Next.js (SINGLE EXPOSED PORT)
   # ---------------------------------------------------------------------------
-  # Server-side rendered React application
-  # Available at green.lab
+  # This is the ONLY externally accessible service.
+  # All /api/* requests are proxied to backend internally.
   # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      # Pass build args for API URL
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: greenthumb-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    # volumes:
-      # Mount for development hot reload (uncomment for development)
-      # - ./frontend:/app
-      # - /app/node_modules
-      # - /app/.next
+      NODE_ENV: production
+      # Internal Docker DNS - frontend proxies to backend
+      NEXT_PUBLIC_API_URL: ""
+      BACKEND_URL: http://backend:8000
     depends_on:
       - backend
-    labels:
-      # Enable Traefik routing
-      - "traefik.enable=true"
-
-      # Frontend routing (catch-all, lowest priority)
-      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.frontend.entrypoints=web"
-      - "traefik.http.routers.frontend.priority=1"
-      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
-
-      # Compression middleware
-      - "traefik.http.middlewares.frontend-compress.compress=true"
-      - "traefik.http.routers.frontend.middlewares=frontend-compress"
     networks:
-      - greenthumb
+      - greenthumb-internal
 
 # =============================================================================
 # Networks
 # =============================================================================
 networks:
-  greenthumb:
-    name: greenthumb
+  greenthumb-internal:
     driver: bridge
+    # No external exposure - all traffic through frontend
 
 # =============================================================================
-# Volumes (named volumes as alternative to bind mounts)
+# Volumes
 # =============================================================================
-# Uncomment if you prefer named volumes over bind mounts
-# volumes:
-#   postgres_data:
-#   redis_data:
+volumes:
+  postgres_data:
+  redis_data:
