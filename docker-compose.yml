@@ -12,60 +12,13 @@
 
 services:
   # ---------------------------------------------------------------------------
-  # Traefik - Reverse Proxy & Load Balancer
+  # Traefik - DISABLED due to Docker API compatibility issues
+  # Uncomment when Docker/Traefik versions are compatible
   # ---------------------------------------------------------------------------
-  # Handles routing to all services via Docker labels
-  # Dashboard available at traefik.green.lab
-  # ---------------------------------------------------------------------------
-  traefik:
-    image: traefik:v2.10
-    container_name: greenthumb-traefik
-    restart: unless-stopped
-    command:
-      # Enable Docker provider for automatic service discovery
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      
-      # HTTP entrypoint (port 80)
-      - "--entrypoints.web.address=:80"
-      
-      # Enable dashboard (secured by labels below)
-      - "--api.dashboard=true"
-      - "--api.insecure=false"
-      
-      # Logging
-      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
-      - "--accesslog=true"
-      
-      # Metrics (optional)
-      - "--metrics.prometheus=true"
-    ports:
-      - "80:80"      # HTTP
-      - "443:443"    # HTTPS (when SSL enabled)
-    volumes:
-      # Docker socket for service discovery
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # ACME certificates (Let's Encrypt)
-      - ./acme.json:/acme.json
-    labels:
-      # Enable Traefik for itself (dashboard)
-      - "traefik.enable=true"
-
-      # Dashboard routing via path (http://<IP>/traefik)
-      - "traefik.http.routers.traefik.rule=PathPrefix(`/traefik`) || PathPrefix(`/api/traefik`)"
-      - "traefik.http.routers.traefik.entrypoints=web"
-      - "traefik.http.routers.traefik.service=api@internal"
-      - "traefik.http.routers.traefik.priority=100"
-
-      # Strip prefix middleware
-      - "traefik.http.middlewares.traefik-strip.stripprefix.prefixes=/traefik"
-
-      # Basic auth for dashboard (generate: htpasswd -nb admin password)
-      # Default: admin/admin (CHANGE THIS!)
-      - "traefik.http.routers.traefik.middlewares=auth,traefik-strip"
-      - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/"
-    networks:
-      - greenthumb
+  # traefik:
+  #   image: traefik:v2.10
+  #   container_name: greenthumb-traefik
+  #   ...
 
   # ---------------------------------------------------------------------------
   # PostgreSQL - Primary Database with PostGIS
