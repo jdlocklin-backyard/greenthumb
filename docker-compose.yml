@@ -52,15 +52,19 @@ services:
     labels:
       # Enable Traefik for itself (dashboard)
       - "traefik.enable=true"
-      
-      # Dashboard routing
-      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DASHBOARD_DOMAIN:-traefik.green.lab}`)"
+
+      # Dashboard routing via path (http://<IP>/traefik)
+      - "traefik.http.routers.traefik.rule=PathPrefix(`/traefik`) || PathPrefix(`/api/traefik`)"
       - "traefik.http.routers.traefik.entrypoints=web"
       - "traefik.http.routers.traefik.service=api@internal"
-      
+      - "traefik.http.routers.traefik.priority=100"
+
+      # Strip prefix middleware
+      - "traefik.http.middlewares.traefik-strip.stripprefix.prefixes=/traefik"
+
       # Basic auth for dashboard (generate: htpasswd -nb admin password)
       # Default: admin/admin (CHANGE THIS!)
-      - "traefik.http.routers.traefik.middlewares=auth"
+      - "traefik.http.routers.traefik.middlewares=auth,traefik-strip"
       - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/"
     networks:
       - greenthumb
@@ -159,18 +163,19 @@ services:
     labels:
       # Enable Traefik routing
       - "traefik.enable=true"
-      
-      # API routing (api.green.lab)
-      - "traefik.http.routers.backend.rule=Host(`${TRAEFIK_API_DOMAIN:-api.green.lab}`)"
+
+      # API routing via path (http://<IP>/api)
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`)"
       - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend.priority=90"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
-      
-      # CORS middleware (use http:// for local development, https:// when SSL enabled)
+
+      # CORS middleware (allow all origins for local dev)
       - "traefik.http.middlewares.backend-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,PATCH,OPTIONS"
-      - "traefik.http.middlewares.backend-cors.headers.accesscontrolalloworiginlist=http://${TRAEFIK_DOMAIN:-green.lab}"
+      - "traefik.http.middlewares.backend-cors.headers.accesscontrolalloworiginlist=*"
       - "traefik.http.middlewares.backend-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.backend-cors.headers.addvaryheader=true"
-      
+
       - "traefik.http.routers.backend.middlewares=backend-cors"
     networks:
       - greenthumb
@@ -239,12 +244,13 @@ services:
     labels:
       # Enable Traefik routing
       - "traefik.enable=true"
-      
-      # Frontend routing (green.lab)
-      - "traefik.http.routers.frontend.rule=Host(`${TRAEFIK_DOMAIN:-green.lab}`)"
+
+      # Frontend routing (catch-all, lowest priority)
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
       - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.priority=1"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
-      
+
       # Compression middleware
       - "traefik.http.middlewares.frontend-compress.compress=true"
       - "traefik.http.routers.frontend.middlewares=frontend-compress"
