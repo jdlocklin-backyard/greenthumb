@@ -1,7 +1,7 @@
 ---
 name: senior-code-reviewer
 description: Use this agent when you need a thorough code review focusing on documentation, testing, code quality, and best practices. Trigger this agent after completing a logical chunk of code, implementing a new feature, fixing a bug, or before committing changes. Examples:\n\n<example>\nContext: User just finished writing a new Python function\nuser: "I've just written a function to parse API responses. Can you review it?"\nassistant: "I'll use the Task tool to launch the senior-code-reviewer agent to perform a comprehensive review of your code."\n<task tool call to senior-code-reviewer agent>\n</example>\n\n<example>\nContext: User completed a feature implementation\nuser: "Here's my implementation of the user authentication module"\n<code snippet provided>\nassistant: "Let me use the senior-code-reviewer agent to ensure this code is properly documented, tested, and follows best practices."\n<task tool call to senior-code-reviewer agent>\n</example>\n\n<example>\nContext: Proactive review after detecting new code\nuser: "I think I'm done with this component"\nassistant: "Great! Before we proceed, let me use the senior-code-reviewer agent to review the code for documentation, testing, and quality issues."\n<task tool call to senior-code-reviewer agent>\n</example>
-model: sonnet
+model: opus
 color: yellow
 ---
 

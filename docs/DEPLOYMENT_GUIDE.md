@@ -56,6 +56,42 @@ Before you begin, ensure you have:
 
 ### Step 1: Create Ubuntu LXC Container
 
+Choose **Option A (CLI)** or **Option B (Web UI)** below.
+
+#### Option A: Command Line (Recommended)
+
+**ACTION: In Proxmox Host Shell (SSH to your Proxmox server)**
+
+```bash
+# Download Ubuntu 22.04 template (if not already present)
+pveam update
+pveam download local ubuntu-22.04-standard_22.04-1_amd64.tar.zst
+
+# Create the container (will prompt for password)
+pct create 100 local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst \
+  --hostname greenthumb \
+  --memory 4096 \
+  --swap 2048 \
+  --cores 2 \
+  --rootfs local-lvm:20 \
+  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
+  --features nesting=1 \
+  --password \
+  --unprivileged 0
+```
+
+**Notes:**
+- Replace `100` with your desired container ID
+- Replace `local-lvm:20` with your storage if different (e.g., `local-zfs:20`)
+- For static IP: `--net0 name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1`
+- The `--features nesting=1` enables Docker support
+
+**CHECKPOINT:** Container created via CLI
+
+---
+
+#### Option B: Web UI
+
 **ACTION: In Proxmox Web UI**
 
 1. Click **Create CT** (top right)
@@ -97,7 +133,7 @@ Before you begin, ensure you have:
 
 ### Step 2: Configure Container for Docker
 
-**ACTION: In Proxmox Shell (Node)**
+**ACTION: In Proxmox Host Shell (NOT inside the container)**
 
 Docker requires specific container features. Edit the container config:
 
@@ -108,14 +144,39 @@ nano /etc/pve/lxc/100.conf
 Add these lines at the end:
 
 ```
-# Docker support
-lxc.apparmor.profile: unconfined
+# Docker support - nesting method (preferred)
+features: nesting=1
+
+# Device access for Docker
 lxc.cgroup2.devices.allow: a
 lxc.cap.drop:
 lxc.mount.auto: proc:rw sys:rw cgroup:rw
 ```
 
 **Save and exit** (Ctrl+O, Enter, Ctrl+X in nano)
+
+> **⚠️ Troubleshooting AppArmor Issues (CVE-2025-52881)**
+>
+> If Docker containers fail to start with "permission denied" errors after Proxmox updates,
+> you may need the unconfined AppArmor profile. Replace the config above with:
+>
+> ```
+> # Docker support - unconfined method (use if nesting fails)
+> lxc.apparmor.profile: unconfined
+> lxc.cgroup2.devices.allow: a
+> lxc.cap.drop:
+> lxc.mount.auto: proc:rw sys:rw cgroup:rw
+>
+> # Required for CVE-2025-52881 fix
+> lxc.mount.entry: /dev/null sys/module/apparmor/parameters/enabled none bind,optional 0 0
+> ```
+>
+> **Better fix:** Update lxc-pve to 6.0.5-2 or newer on your Proxmox host:
+> ```bash
+> apt update && apt install lxc-pve
+> ```
+>
+> See: [Proxmox Forum - CVE-2025-52881](https://forum.proxmox.com/threads/cve-2025-52881-breaks-docker-lxc-containers.175827/)
 
 **CHECKPOINT:** Container configured for Docker
 
@@ -335,6 +396,37 @@ git clone <your-repo-url> .
 ### Step 11: Configure Environment Variables
 
 **ACTION: In Container Shell**
+
+Choose **Option A (Automated)** or **Option B (Manual)** below.
+
+#### Option A: Automated with sed (Recommended)
+
+```bash
+cd /opt/greenthumb
+
+# Copy example environment file
+cp .env.example .env
+
+# Generate secure passwords and secret key
+DB_PASS=$(openssl rand -hex 16)
+REDIS_PASS=$(openssl rand -hex 16)
+SECRET=$(openssl rand -hex 32)
+
+# Update .env with sed
+sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$DB_PASS/" .env
+sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD=$REDIS_PASS/" .env
+sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
+sed -i "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://api.green.lab|" .env
+
+# Verify the changes
+grep -E "^(POSTGRES_PASSWORD|REDIS_PASSWORD|SECRET_KEY|NEXT_PUBLIC_API_URL)=" .env
+```
+
+**CHECKPOINT:** Environment variables configured automatically
+
+---
+
+#### Option B: Manual Editing
 
 ```bash
 cd /opt/greenthumb
@@ -596,6 +688,73 @@ make clean
 make setup
 make up
 ```
+
+---
+
+### AppArmor Permission Denied Errors (CVE-2025-52881)
+
+**Problem:** Docker containers fail with errors like:
+- `permission denied`
+- `open sysctl net.ipv4.ip_unprivileged_port_start file: reopen fd 8: permission denied`
+- `OCI runtime create failed`
+
+This is caused by CVE-2025-52881 affecting AppArmor in Proxmox LXC containers.
+
+**Solution 1: Update lxc-pve (Recommended)**
+
+On your **Proxmox host** (not the container):
+
+```bash
+apt update && apt install lxc-pve
+```
+
+Verify version is 6.0.5-2 or newer:
+```bash
+dpkg -l | grep lxc-pve
+```
+
+Then restart your container:
+```bash
+pct stop 100
+pct start 100
+```
+
+**Solution 2: Manual AppArmor Fix**
+
+If you can't update, edit the container config on your **Proxmox host**:
+
+```bash
+nano /etc/pve/lxc/100.conf
+```
+
+Add these lines:
+```
+lxc.apparmor.profile: unconfined
+lxc.mount.entry: /dev/null sys/module/apparmor/parameters/enabled none bind,optional 0 0
+```
+
+Restart container:
+```bash
+pct stop 100
+pct start 100
+```
+
+**Solution 3: Use Nesting Instead**
+
+A safer alternative that doesn't fully disable AppArmor:
+
+```bash
+nano /etc/pve/lxc/100.conf
+```
+
+Ensure this line exists:
+```
+features: nesting=1
+```
+
+**References:**
+- [Proxmox Forum - CVE-2025-52881](https://forum.proxmox.com/threads/cve-2025-52881-breaks-docker-lxc-containers.175827/)
+- [Proxmox Forum - AppArmor Issues](https://forum.proxmox.com/threads/new-privileged-lxc-container-fails-to-start-network-due-to-apparmor-permissions.165777/)
 
 ---
 
