@@ -225,11 +225,11 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    volumes:
-      # Mount for development hot reload (comment out for production)
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+    # volumes:
+      # Mount for development hot reload (uncomment for development)
+      # - ./frontend:/app
+      # - /app/node_modules
+      # - /app/.next
     depends_on:
       - backend
     labels:
